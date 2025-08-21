@@ -1,6 +1,5 @@
 venv/
-alx_backend_graphql_crm/__pycache__/
-crm/__pycache__/
-crm/migrations/
-crm/urls.py
 db.sqlite3
+alx-backend_graphql_crm/alx_backend_graphql_crm/__pycache__/
+alx-backend_graphql_crm/crm/__pycache__/
+alx-backend_graphql_crm/db.sqlite3
