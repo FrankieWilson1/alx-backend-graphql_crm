@@ -1,15 +1,15 @@
 import graphene
-from graphene_django.types import (
-    DjangoObjectType,
-)
-
-from .models import (
-    Customer,
-    Product,
-    Order
-)
+from graphene_django.types import DjangoObjectType
+from graphene_django.filter import DjangoFilterConnectionField
+from django.db.models import Sum
 from decimal import Decimal as PyDecimal
+import django_filters
 
+from .models import Customer, Product, Order
+from .filters import CustomerFilter, ProductFilter, OrderFilter
+
+
+# --- Custom Scalar for Float to Decimal Conversion ---
 class FloatDecimal(graphene.Decimal):
     @staticmethod
     def parse_value(value):
@@ -18,27 +18,50 @@ class FloatDecimal(graphene.Decimal):
         return super(FloatDecimal, FloatDecimal).parse_value(value)
 
 
-
-# Define the GraphQL Type for Customer model
+# --- GraphQL Type Definitions ---
 class CustomerType(DjangoObjectType):
     class Meta:
         model = Customer
+        interfaces = (graphene.relay.Node,)
 
 
+class ProductType(DjangoObjectType):
+    class Meta:
+        model = Product
+        interfaces = (graphene.relay.Node,)
 
+
+class OrderType(DjangoObjectType):
+    class Meta:
+        model = Order
+        interfaces = (graphene.relay.Node,)
+    
+    products = graphene.List(ProductType)
+    
+    def resolve_products(self, info):
+        return self.product.all()
+
+
+# --- GraphQL Input Types ---
 class CustomerInput(graphene.InputObjectType):
     name = graphene.String(required=True)
     email = graphene.String(required=True)
     phone = graphene.String()
 
-class CreateCustomer(graphene.Mutation):
-    """
-    Mutation to create a new customer.
 
-    Attributes:
-        customer: The created customer object.
-        message: A success or error message.
-    """
+class ProductInput(graphene.InputObjectType):
+    name = graphene.String(required=True)
+    price = FloatDecimal(required=True)
+    stock = graphene.Int()
+
+
+class OrderInput(graphene.InputObjectType):
+    customerId = graphene.ID(required=True)
+    productIds = graphene.List(graphene.ID, required=True)
+
+
+# --- GraphQL Mutation Classes ---
+class CreateCustomer(graphene.Mutation):
     customer = graphene.Field(CustomerType)
     message = graphene.String()
 
@@ -58,13 +81,6 @@ class CreateCustomer(graphene.Mutation):
 
 
 class BulkCreateCustomers(graphene.Mutation):
-    """
-    Mutation to create multiple customers.
-
-    Attributes:
-        customers: List of created customer objects.
-        errors: List of error messages encountered during creation.
-    """
     customers = graphene.List(CustomerType)
     errors = graphene.List(graphene.String)
 
@@ -74,7 +90,7 @@ class BulkCreateCustomers(graphene.Mutation):
     def mutate(self, info, input):
         created_customers = []
         errors = []
-
+        
         for data in input:
             try:
                 customer = Customer.objects.create(
@@ -89,26 +105,7 @@ class BulkCreateCustomers(graphene.Mutation):
         return BulkCreateCustomers(customers=created_customers, errors=errors)
 
 
-class ProductType(DjangoObjectType):
-    class Meta:
-        model = Product
-
-
-
-class ProductInput(graphene.InputObjectType):
-    name = graphene.String(required=True)
-    price = FloatDecimal(required=True)
-    stock = graphene.Int()
-
-
 class CreateProduct(graphene.Mutation):
-    """
-    Mutation to create a new product.
-
-    Attributes:
-        product: The created product object.
-        message: A success or error message.
-    """
     product = graphene.Field(ProductType)
     message = graphene.String()
 
@@ -121,11 +118,11 @@ class CreateProduct(graphene.Mutation):
                 product=None,
                 message="Error creating product: Price must be a positive number."
             )
-
+        
         if input.stock < 0:
             return CreateProduct(
                 product=None,
-                message="Error creating product: Stock cannot be negative number."
+                message="Error creating product: Stock cannot be a negative number."
             )
 
         try:
@@ -134,12 +131,10 @@ class CreateProduct(graphene.Mutation):
                 price=input.price,
                 stock=input.stock
             )
-
             return CreateProduct(
                 product=product,
                 message="Product created successfully!."
             )
-
         except Exception as e:
             return CreateProduct(
                 product=None,
@@ -147,29 +142,7 @@ class CreateProduct(graphene.Mutation):
             )
 
 
-class OrderType(DjangoObjectType):
-    class Meta:
-        model = Order
-    
-    products = graphene.List(ProductType)
-    
-    def resolve_products(self, info):
-        return self.product.all()
-
-
-class OrderInput(graphene.InputObjectType):
-    customerId = graphene.ID(required=True)
-    productIds = graphene.List(graphene.ID, required=True)
-
-
 class CreateOrder(graphene.Mutation):
-    """
-    Mutation to create a new order.
-
-    Attributes:
-        order: The created order object.
-        message: A success or error message.
-    """
     order = graphene.Field(OrderType)
     message = graphene.String()
 
@@ -180,17 +153,11 @@ class CreateOrder(graphene.Mutation):
         try:
             customer = Customer.objects.get(id=input.customerId)
         except Customer.DoesNotExist:
-            return CreateOrder(
-                order=None,
-                message="Error creating order: Customer not found."
-            )
-
+            return CreateOrder(order=None, message="Error creating order: Customer not found.")
+        
         if not input.productIds:
-            return CreateOrder(
-                order=None,
-                message="Error: An order must contain at least one product."
-            )
-
+            return CreateOrder(order=None, message="Error: An order must contain at least one product.")
+        
         products = Product.objects.filter(id__in=input.productIds)
         if len(products) != len(input.productIds):
             existing_ids = set(p.id for p in products)
@@ -202,34 +169,28 @@ class CreateOrder(graphene.Mutation):
             )
         
         try:
-            order = Order.objects.create(
-                customer=customer
-            )
+            order = Order.objects.create(customer=customer)
             order.product.set(products)
             total_amount = products.aggregate(Sum('price'))['price__sum']
             order.total_amount = total_amount
             order.save()
             
-            return CreateOrder(
-                order=order,
-                message="Order created successfully"
-            )
-
+            return CreateOrder(order=order, message="Order created successfully")
         except Exception as e:
-            return CreateOrder(
-                order=None,
-                message=f"Error creating order: {str(e)}"
+            return CreateOrder(order=None, message=f"Error creating order: {str(e)}"
             )
 
 
-
+# --- Root Query and Mutation Classes ---
 class Query(graphene.ObjectType):
     hello = graphene.String(default_value="Hello, GraphQL!")
+    allCustomers = DjangoFilterConnectionField(CustomerType, filterset_class=CustomerFilter)
+    allProducts = DjangoFilterConnectionField(ProductType, filterset_class=ProductFilter)
+    allOrders = DjangoFilterConnectionField(OrderType, filterset_class=OrderFilter)
 
 
 class Mutation(graphene.ObjectType):
     create_customer = CreateCustomer.Field()
-    bulk_create_customers = BulkCreateCustomers.Field()
+    bulkCreateCustomers = BulkCreateCustomers.Field()
     create_product = CreateProduct.Field()
     create_order = CreateOrder.Field()
-
