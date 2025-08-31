@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     # Third party app
     'graphene_django',
     'django_filters',
+    'gql',
 ]
 
 MIDDLEWARE = [

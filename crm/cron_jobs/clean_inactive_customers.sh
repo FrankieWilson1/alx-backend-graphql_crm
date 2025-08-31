@@ -2,6 +2,7 @@
 
 # Navigate to the project directory and activate the virtual environment
 # If it exists
+# This script will print the number of deleted customers.
 cd /Ubuntu/home/frankie/alx_projects/alx-backend-graphql_crm/
 if [ -d "venv" ]; then
     source venv/bin/activate
