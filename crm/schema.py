@@ -181,6 +181,33 @@ class CreateOrder(graphene.Mutation):
             )
 
 
+# ---  Schedule a GraphQL Mutation for Product Stock Alerts ---
+class UpdateLowStockProducts(graphene.Mutation):
+    updated_products = graphene.List(ProductType)
+    message = graphene.String()
+    
+    class Arguments:
+        pass
+    
+    def mutate(self, info):
+        # Find products with stock less than 10
+        low_stock_products = Product.objects.filter(stock__lt=10)
+        
+        updated_list = []
+        for product in low_stock_products:
+            # Increment stock by 10
+            product.stock += 10
+            product.save()
+            updated_list.append(product)
+
+        if updated_list:
+            message = f"Successfully updated stock for {len(updated_list)} products."
+        else:
+            message = "No products found with low stock."
+
+        return UpdateLowStockProducts(updated_products=updated_list, message=message)
+
+
 # --- Root Query and Mutation Classes ---
 class Query(graphene.ObjectType):
     hello = graphene.String(default_value="Hello, GraphQL!")
@@ -194,3 +221,4 @@ class Mutation(graphene.ObjectType):
     bulkCreateCustomers = BulkCreateCustomers.Field()
     create_product = CreateProduct.Field()
     create_order = CreateOrder.Field()
+    update_low_stock_products = UpdateLowStockProducts.Field()

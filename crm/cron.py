@@ -40,3 +40,59 @@ def log_crm_heartbeat():
             f.write(error_message + "\n")
             
         sys.stderr.write(error_message + "\n")
+
+
+def update_low_stock():
+    """Executes a GraphQL mutation to update low-stock products and logs the result.
+    """
+    # GraphQL Setup
+    transport = RequestsHTTPTransport(url="http://localhost:8000/graphql")
+    client = Client(transport=transport, fetch_schema_from_transport=True)
+
+    # Define the GraphQL mutation string
+    mutation_query = gql(
+        """
+        mutation {
+          updateLowStockProducts {
+            message
+            updatedProducts {
+              name
+              stock
+            }
+          }
+        }
+        """
+    )
+    
+    # Define the log file path
+    LOG_FILE = "/tmp/low_stock_updates_log.txt"
+    
+    try:
+        # Execute the mutation
+        result = client.execute(mutation_query)
+        data = result.get("updateLowStockProducts")
+        message = data.get("message")
+        updated_products = data.get("updatedProducts", [])
+        
+        # Log the result
+        with open(LOG_FILE, "a") as f:
+            timestamp = datetime.datetime.now().strftime("%d/%m/%Y-%H:%M:%S")
+            f.write(f"[{timestamp}] - {message}\n")
+            
+            if updated_products:
+                f.write(f"[{timestamp}] - Updated Products:\n")
+                for product in updated_products:
+                    log_entry = f"  - Name: {product['name']}, New Stock: {product['stock']}"
+                    f.write(log_entry + "\n")
+                    print(log_entry) # Also print to console
+            
+        print(f"Mutation result: {message}")
+        
+    except Exception as e:
+        # Log any errors
+        with open(LOG_FILE, "a") as f:
+            timestamp = datetime.datetime.now().strftime("%d/%m/%Y-%H:%M:%S")
+            error_message = f"[{timestamp}] - ERROR: Failed to execute low-stock mutation. {e}"
+            f.write(error_message + "\n")
+        
+        sys.stderr.write(error_message + "\n")
