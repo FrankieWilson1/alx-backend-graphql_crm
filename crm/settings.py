@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'django_filters',
     'gql',
     'django_crontab',
+    'django_celery_beat',
 ]
 
 MIDDLEWARE = [
