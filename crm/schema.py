@@ -7,7 +7,7 @@ import django_filters
 
 from .models import Customer, Product, Order
 from .filters import CustomerFilter, ProductFilter, OrderFilter
-
+# from crm.models import Product
 
 # --- Custom Scalar for Float to Decimal Conversion ---
 class FloatDecimal(graphene.Decimal):
